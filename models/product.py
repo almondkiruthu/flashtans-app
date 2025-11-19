@@ -1,25 +1,18 @@
 import uuid
-from decimal import Decimal
-from config.database import get_connection
+from datetime import datetime
+from config.database import get_storage, data_lock
 
 class Product:
     @staticmethod
     def get_all():
         """Get all products"""
         try:
-            connection = get_connection()
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute('SELECT * FROM products ORDER BY created_at DESC')
-            rows = cursor.fetchall()
-            cursor.close()
-            connection.close()
-
-            # Convert Decimal to float for JSON serialization
-            for row in rows:
-                if 'price' in row and isinstance(row['price'], Decimal):
-                    row['price'] = float(row['price'])
-
-            return rows
+            with data_lock:
+                storage = get_storage()
+                products = list(storage['products'].values())
+                # Sort by created_at descending (newest first)
+                products.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+                return products
         except Exception as error:
             raise error
 
@@ -27,17 +20,9 @@ class Product:
     def get_by_id(product_id):
         """Get a product by ID"""
         try:
-            connection = get_connection()
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute('SELECT * FROM products WHERE id = %s', (product_id,))
-            row = cursor.fetchone()
-            cursor.close()
-            connection.close()
-
-            if row and 'price' in row and isinstance(row['price'], Decimal):
-                row['price'] = float(row['price'])
-
-            return row
+            with data_lock:
+                storage = get_storage()
+                return storage['products'].get(product_id)
         except Exception as error:
             raise error
 
@@ -46,22 +31,24 @@ class Product:
         """Create a new product"""
         try:
             product_id = str(uuid.uuid4())
-            name = product_data['name']
-            price = float(product_data['price'])
-            description = product_data['description']
-            stock = int(product_data['stock'])
+            now = datetime.now().isoformat()
 
-            connection = get_connection()
-            cursor = connection.cursor()
-            cursor.execute(
-                'INSERT INTO products (id, name, price, description, stock) VALUES (%s, %s, %s, %s, %s)',
-                (product_id, name, price, description, stock)
-            )
-            connection.commit()
-            cursor.close()
-            connection.close()
+            product = {
+                'id': product_id,
+                'name': product_data['name'],
+                'price': float(product_data['price']),
+                'description': product_data['description'],
+                'stock': int(product_data['stock']),
+                'image': product_data.get('image', '/images/placeholder.jpg'),
+                'created_at': now,
+                'updated_at': now
+            }
 
-            return Product.get_by_id(product_id)
+            with data_lock:
+                storage = get_storage()
+                storage['products'][product_id] = product
+
+            return product
         except Exception as error:
             raise error
 
@@ -69,22 +56,19 @@ class Product:
     def update(product_id, product_data):
         """Update a product"""
         try:
-            name = product_data['name']
-            price = float(product_data['price'])
-            description = product_data['description']
-            stock = int(product_data['stock'])
+            with data_lock:
+                storage = get_storage()
+                if product_id not in storage['products']:
+                    return None
 
-            connection = get_connection()
-            cursor = connection.cursor()
-            cursor.execute(
-                'UPDATE products SET name = %s, price = %s, description = %s, stock = %s WHERE id = %s',
-                (name, price, description, stock, product_id)
-            )
-            connection.commit()
-            cursor.close()
-            connection.close()
+                product = storage['products'][product_id]
+                product['name'] = product_data['name']
+                product['price'] = float(product_data['price'])
+                product['description'] = product_data['description']
+                product['stock'] = int(product_data['stock'])
+                product['updated_at'] = datetime.now().isoformat()
 
-            return Product.get_by_id(product_id)
+                return product
         except Exception as error:
             raise error
 
@@ -92,15 +76,12 @@ class Product:
     def delete(product_id):
         """Delete a product"""
         try:
-            connection = get_connection()
-            cursor = connection.cursor()
-            cursor.execute('DELETE FROM products WHERE id = %s', (product_id,))
-            affected_rows = cursor.rowcount
-            connection.commit()
-            cursor.close()
-            connection.close()
-
-            return affected_rows > 0
+            with data_lock:
+                storage = get_storage()
+                if product_id in storage['products']:
+                    del storage['products'][product_id]
+                    return True
+                return False
         except Exception as error:
             raise error
 
@@ -108,14 +89,9 @@ class Product:
     def update_stock(product_id, quantity):
         """Update product stock"""
         try:
-            connection = get_connection()
-            cursor = connection.cursor()
-            cursor.execute(
-                'UPDATE products SET stock = stock - %s WHERE id = %s',
-                (quantity, product_id)
-            )
-            connection.commit()
-            cursor.close()
-            connection.close()
+            with data_lock:
+                storage = get_storage()
+                if product_id in storage['products']:
+                    storage['products'][product_id]['stock'] -= quantity
         except Exception as error:
             raise error
