@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mysql:
+   image: mysql:8.0
+   restart: always
+   environment:
+     MYSQL_ROOT_PASSWORD: 
+     MYSQL_DATABASE:
+    ports:
+      
+    volumes:
+      
+
+  app:
+   build: .
+   depends_on:
+      - mysql
+    environment:
+    DB_HOST: 
+    DB_USER: 
+    DB_PASSWORD: 
+    DB_NAME: 
+    DB_PORT: 
+    	PORT: 
+    ports:
+      
+ volumes:
+      
+
+volumes:
+  mysql_data:
