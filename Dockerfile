@@ -1,16 +1,16 @@
-FROM node:18-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install dependencies
-COPY package*.json ./
-RUN npm install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
 # Expose port
-EXPOSE 9090
+EXPOSE 8000
 
-# Wait for MySQL and start the application
-CMD ["npm", "start"]
+# Start the Flask application
+CMD ["python", "app.py"]
